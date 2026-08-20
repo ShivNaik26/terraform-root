@@ -37,6 +37,47 @@ module "subnets" {
   tags              = merge(local.common_tags, { SubnetType = each.value.is_public ? "public" : "private" })
 }
 
+# ── Internet Gateway ────────────────────────────────────────────────
+resource "aws_internet_gateway" "myapp_igw" {
+  vpc_id = module.vpc.vpc_id
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.name_prefix}-igw"
+    }
+  )
+}
+
+# ── Public Route Table ──────────────────────────────────────────────
+resource "aws_route_table" "public" {
+  vpc_id = module.vpc.vpc_id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.myapp_igw.id
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.name_prefix}-public-rt"
+    }
+  )
+}
+
+# ── Associate Public Subnets ────────────────────────────────────────
+resource "aws_route_table_association" "public" {
+  for_each = {
+    for key, subnet in var.subnets :
+    key => subnet
+    if subnet.is_public
+  }
+
+  subnet_id      = module.subnets[each.key].subnet_id
+  route_table_id = aws_route_table.public.id
+}
+
 # ── EC2 Instances (2 instances via for_each) ─────────────────────────
 module "ec2_instances" {
   source = "git::https://github.com/ygminds73/terraform-module-ec2.git"
